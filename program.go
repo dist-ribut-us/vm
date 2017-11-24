@@ -5,119 +5,14 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"unsafe"
 )
-
-type Programmer []byte
-
-func (p Programmer) Stop() Programmer {
-	return p.Append(Stop)
-}
-
-func (p Programmer) Append(op Op, args ...uint64) Programmer {
-	b := make([]byte, 2+8*len(args))
-	*(*Op)(unsafe.Pointer(&b[0])) = op
-	for i, a := range args {
-		SetU(a, &b[2+i*8])
-	}
-	return append(p, b...)
-}
-
-func (p Programmer) SetU(r, v uint64) Programmer {
-	return p.Append(Set, r, v)
-}
-
-func (p Programmer) SetF(r uint64, v float64) Programmer {
-	uv := *(*uint64)(unsafe.Pointer(&v))
-	return p.Append(Set, r, uv)
-}
-
-func (p Programmer) Copy(r1, r2 uint64) Programmer {
-	return p.Append(Copy, r1, r2)
-}
-
-func (p Programmer) IAdd(r1, r2 uint64) Programmer {
-	return p.Append(IAdd, r1, r2)
-}
-
-func (p Programmer) FAdd(r1, r2 uint64) Programmer {
-	return p.Append(FAdd, r1, r2)
-}
-
-func (p Programmer) ISub(r1, r2 uint64) Programmer {
-	return p.Append(ISub, r1, r2)
-}
-
-func (p Programmer) FSub(r1, r2 uint64) Programmer {
-	return p.Append(FSub, r1, r2)
-}
-
-func (p Programmer) Alloc(r uint64) Programmer {
-	return p.Append(Alloc, r)
-}
-
-func (p Programmer) Read(r1, r2, r3 uint64) Programmer {
-	return p.Append(Read, r1, r2, r3)
-}
-
-func (p Programmer) Write(r1, r2, r3 uint64) Programmer {
-	return p.Append(Write, r1, r2, r3)
-}
-
-func (p Programmer) Jump(r1, r2, r3 uint64) Programmer {
-	return p.Append(Jump, r1, r2, r3)
-}
-
-func (p Programmer) Position(r1, r2 uint64) Programmer {
-	return p.Append(Position, r1, r2)
-}
-
-type OpDef struct {
-	OpFunc
-	ArgFunc func([]uint64, *VM)
-	Name    string
-	Args    []bool // T = Register
-	Idx     Op
-}
-
-func (od *OpDef) Func() OpFunc {
-	if od.OpFunc != nil {
-		return od.OpFunc
-	}
-	od.OpFunc = func(vm *VM) error {
-		args := make([]uint64, len(od.Args))
-		for i := range args {
-			args[i] = GetU(&vm.Pages[vm.Page][vm.Pos+2+uint64(i)*8])
-		}
-		od.ArgFunc(args, vm)
-		vm.Pos += 2 + 8*uint64(len(od.Args))
-		return nil
-	}
-	return od.OpFunc
-}
-
-type OpSet []OpDef
-
-func (os OpSet) Ops() []OpFunc {
-	ops := make([]OpFunc, 65535)
-	var idx Op
-	for _, op := range os {
-		if op.Idx != 0 {
-			idx = op.Idx
-		} else {
-			idx++
-		}
-		ops[idx] = op.Func()
-	}
-	return ops
-}
 
 type opIdx struct {
 	Op
 	OpDef
 }
 
-func (os OpSet) Parser() func(string) ([]byte, error) {
+func (os OpList) Parser() func(string) ([]byte, error) {
 	byName := make(map[string]opIdx, len(os))
 	var idx Op
 	for _, op := range os {
@@ -133,47 +28,94 @@ func (os OpSet) Parser() func(string) ([]byte, error) {
 	}
 
 	return func(program string) ([]byte, error) {
-		return parse(byName, program)
+		p := programmer{
+			byName: byName,
+			code:   program,
+			vars:   make(map[string]variable),
+		}
+		if err := p.parse(); err != nil {
+			return nil, err
+		}
+		return p.program, nil
 	}
 }
 
-type ParseError struct {
-	LineNumber int
-	LineString string
-	ErrorType  string
+type programmer struct {
+	byName  map[string]opIdx
+	code    string
+	program []byte
+	vars    map[string]variable
+	lexed   []lexedLine
 }
 
-func (pe ParseError) Error() string {
-	return fmt.Sprintf("%s) %d: %s", pe.ErrorType, pe.LineNumber, pe.LineString)
+type variable struct {
+	instance []int
+	value    Qword
 }
 
-func parse(byName map[string]opIdx, code string) ([]byte, error) {
-	lexed := lex(code)
-	var program []byte
-	for _, line := range lexed {
+var labelRe = regexp.MustCompile(`\w+:`)
+
+func (p *programmer) parse() error {
+	p.lex()
+	for _, line := range p.lexed {
 		opName := line.word[0]
-		op, ok := byName[opName]
+		if opName == "#def" {
+			if err := p.def(line); err != nil {
+				return err
+			}
+			continue
+		}
+		if labelRe.MatchString(opName) {
+			opName = string(opName[:len(opName)-1])
+			v := p.vars[opName]
+			v.value = Qword(len(p.program))
+			p.vars[opName] = v
+			continue
+		}
+		op, ok := p.byName[opName]
 		if !ok {
-			return nil, ParseError{
-				LineNumber: line.number,
-				LineString: line.raw,
-				ErrorType:  "Op not found",
-			}
+			return line.Error("Op not found")
 		}
-		if len(line.word)-1 != len(op.Args) {
-			return nil, ParseError{
-				LineNumber: line.number,
-				LineString: line.raw,
-				ErrorType:  "Wrong number of arguments",
-			}
+		if err := p.appendOp(op, line); err != nil {
+			return err
 		}
-		opBytes := op.Bytes(len(op.Args))
-		for i, arg := range line.word[1:] {
-			setArg(arg, &opBytes[2+8*i])
-		}
-		program = append(program, opBytes...)
 	}
-	return program, nil
+	for _, v := range p.vars {
+		for _, i := range v.instance {
+			v.value.Put(&(p.program[i]))
+		}
+	}
+	return nil
+}
+
+func (p *programmer) appendOp(op opIdx, line lexedLine) error {
+	if len(line.word)-1 != len(op.Args) {
+		return line.Error("Wrong number of arguments")
+	}
+	pos := len(p.program) + 2
+	p.program = append(p.program, op.Bytes(len(op.Args))...)
+	for i, arg := range line.word[1:] {
+		p.setArg(arg, pos+i*8)
+	}
+	return nil
+}
+
+func (p *programmer) def(line lexedLine) error {
+	if len(line.word) != 3 {
+		return line.Error("Wrong number of arguments")
+	}
+	name := line.word[1]
+	val, isWord, err := convertArg(line.word[2])
+	if err != nil {
+		return err
+	}
+	if isWord {
+		return line.Error("definition must be a number")
+	}
+	v := p.vars[name]
+	v.value = val
+	p.vars[name] = v
+	return nil
 }
 
 type lexedLine struct {
@@ -182,40 +124,73 @@ type lexedLine struct {
 	raw    string
 }
 
-var lineRe = regexp.MustCompile(`^[ \t]*(?:(\w+)[ \t]*)+`)
-var partsRe = regexp.MustCompile(`\w+`)
+func (l lexedLine) Error(ErrorType string) LineError {
+	return LineError{
+		LineNumber: l.number,
+		LineString: l.raw,
+		ErrorType:  ErrorType,
+	}
+}
 
-func lex(program string) []lexedLine {
-	var lexed []lexedLine
-	for li, lineStr := range strings.Split(program, "\n") {
+type LineError struct {
+	LineNumber int
+	LineString string
+	ErrorType  string
+}
+
+func (le LineError) Error() string {
+	return fmt.Sprintf("%s) %d: %s", le.ErrorType, le.LineNumber, le.LineString)
+}
+
+var lineRe = regexp.MustCompile(`^[ \t]*#?(?:([\w\.]+:?)[ \t]*)+`)
+var partsRe = regexp.MustCompile(`#?[\w\.]+:?`)
+
+func (p *programmer) lex() {
+	for li, lineStr := range strings.Split(p.code, "\n") {
 		raw := strings.TrimSpace(lineStr)
 		lineStr = lineRe.FindString(raw)
 		words := partsRe.FindAllString(lineStr, -1)
 		if len(words) == 0 {
 			continue
 		}
-		lexed = append(lexed, lexedLine{
+		p.lexed = append(p.lexed, lexedLine{
 			number: li,
 			word:   words,
 			raw:    raw,
 		})
 	}
-	return lexed
 }
 
-func setArg(arg string, addr *byte) error {
+func (p *programmer) setArg(arg string, pos int) error {
+	r, isArg, err := convertArg(arg)
+	if err != nil {
+		return err
+	}
+	if !isArg {
+		r.Put(&(p.program[pos]))
+		return nil
+	}
+
+	v := p.vars[arg]
+	v.instance = append(v.instance, pos)
+	p.vars[arg] = v
+	return nil
+}
+
+func convertArg(arg string) (Qword, bool, error) {
 	if strings.Contains(arg, ".") {
 		f, err := strconv.ParseFloat(arg, 64)
 		if err != nil {
-			return err
+			return 0, false, err
 		}
-		SetF(f, addr)
-	} else {
-		u, err := strconv.ParseUint(arg, 10, 64)
-		if err != nil {
-			return err
-		}
-		SetU(u, addr)
+		r := QwordF(f)
+		return r, false, nil
 	}
-	return nil
+
+	u, err := strconv.ParseUint(arg, 10, 64)
+	if err == nil {
+		return Qword(u), false, nil
+	}
+
+	return 0, true, nil
 }

@@ -1,7 +1,7 @@
 package vm
 
 type VM struct {
-	Registers []Register
+	Registers []Qword
 	Pages     [][]byte
 	Pos, Page uint64
 	Ops       []OpFunc
@@ -9,10 +9,10 @@ type VM struct {
 	Stop      bool
 }
 
-func New(registers int, prog []byte) *VM {
+func New(registers int, prog []byte, ops []OpFunc) *VM {
 	return &VM{
-		Registers: make([]Register, registers),
-		Ops:       Ops,
+		Registers: make([]Qword, registers),
+		Ops:       ops,
 		Pages:     [][]byte{prog},
 	}
 }
