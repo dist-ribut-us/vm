@@ -26,7 +26,7 @@ func TestBasic(t *testing.T) {
 	`)
 	assert.NoError(t, err)
 
-	v := vm.New(6, p, ops.Ops)
+	v := vm.New([]vm.Qword{0, 0, 0, 0, 0}, p, ops.Ops)
 	v.Panic = true
 
 	err = v.Run()
@@ -44,7 +44,7 @@ func TestRecover(t *testing.T) {
 	`)
 	assert.NoError(t, err)
 
-	v := vm.New(6, p, ops.Ops)
+	v := vm.New([]vm.Qword{0, 0, 0, 0, 0}, p, ops.Ops)
 
 	err = v.Run()
 	assert.Error(t, err)
@@ -60,7 +60,7 @@ func TestPages(t *testing.T) {
 		stop
 	`)
 	assert.NoError(t, err)
-	v := vm.New(6, p, ops.Ops)
+	v := vm.New([]vm.Qword{0, 0, 0, 0, 0}, p, ops.Ops)
 
 	err = v.Run()
 	assert.NoError(t, err)
@@ -83,7 +83,7 @@ func TestManualMult(t *testing.T) {
 		stop
 	`)
 	assert.NoError(t, err)
-	v := vm.New(6, p, ops.Ops)
+	v := vm.New([]vm.Qword{0, 0, 0, 0, 0, 0}, p, ops.Ops)
 	v.Panic = true
 
 	err = v.Run()
@@ -105,7 +105,7 @@ func TestVar(t *testing.T) {
 		stop
 	`)
 	assert.NoError(t, err)
-	v := vm.New(3, p, ops.Ops)
+	v := vm.New([]vm.Qword{0, 0, 0}, p, ops.Ops)
 	v.Panic = true
 
 	err = v.Run()

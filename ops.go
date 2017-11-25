@@ -77,12 +77,21 @@ func argFuncErr(fn ArgFuncErr, boolArgs []bool) OpFunc {
 }
 
 func (od OpDef) Describe() string {
+	if len(od.Args) == 0 {
+		if od.Desc == "" {
+			return od.Name
+		}
+		return fmt.Sprintf("%s : %s", od.Name, od.Desc)
+	}
 	args := make([]string, len(od.Args))
+	var rIdx, vIdx int
 	for i, isReg := range od.Args {
 		if isReg {
-			args[i] = "R"
+			args[i] = fmt.Sprintf("R%d", rIdx)
+			rIdx++
 		} else {
-			args[i] = "V"
+			args[i] = fmt.Sprintf("V%d", vIdx)
+			vIdx++
 		}
 	}
 	argsString := strings.Join(args, " ")
