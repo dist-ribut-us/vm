@@ -1,9 +1,11 @@
+// Package ops holds a list of default ops
 package ops
 
 import (
 	"github.com/dist-ribut-us/vm"
 )
 
+// List holds
 var List = vm.OpList{
 	{
 		Name: "set",
@@ -207,6 +209,3 @@ var List = vm.OpList{
 		Idx: 65535,
 	},
 }
-
-var Ops = List.Ops()
-var Parser = List.Parser()

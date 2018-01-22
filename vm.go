@@ -1,16 +1,18 @@
 package vm
 
+// VM is a register machine with pages of memory and a slice of operations that
+// can execute a program.
 type VM struct {
 	Registers []Qword
 	Pages     [][]byte
 	Pos, Page uint64
 	Ops       []OpFunc
-	Cost      []int64
-	Supply    int64
 	Panic     bool
 	Stop      bool
+	Extend    interface{}
 }
 
+// New creates a VM with the specified register values, program and ops
 func New(registers []Qword, prog []byte, ops []OpFunc) *VM {
 	return &VM{
 		Registers: registers,
@@ -19,12 +21,7 @@ func New(registers []Qword, prog []byte, ops []OpFunc) *VM {
 	}
 }
 
-type SupplyDepleted struct{}
-
-func (SupplyDepleted) Error() string {
-	return "Supply Depleted"
-}
-
+// Run the VM
 func (vm *VM) Run() (err error) {
 	if !vm.Panic {
 		defer func() {
@@ -40,17 +37,7 @@ func (vm *VM) Run() (err error) {
 	for {
 		op := GetOp(&vm.Pages[vm.Page][vm.Pos])
 		err = vm.Ops[op](vm)
-		if err != nil {
-			return
-		}
-		if int(op) < len(vm.Cost) {
-			vm.Supply -= vm.Cost[op]
-			if vm.Supply < 0 {
-				err = SupplyDepleted{}
-				return
-			}
-		}
-		if vm.Stop {
+		if err != nil || vm.Stop {
 			return
 		}
 	}

@@ -213,11 +213,13 @@ func TestOps(t *testing.T) {
 		},
 	}
 
+	parser := List.Parser()
+	ops := List.Ops()
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			p, err := Parser(tc.code)
+			p, err := parser(tc.code)
 			assert.NoError(t, err)
-			v := vm.New(tc.reg, p, Ops)
+			v := vm.New(tc.reg, p, ops)
 			err = v.Run()
 			assert.NoError(t, err)
 			assert.Equal(t, tc.expected, v.Registers)

@@ -5,24 +5,33 @@ import (
 	"strings"
 )
 
+// Op code
 type Op uint16
 
+// Bytes returns a byte slice where the first 2 bytes hold the op and sized to
+// hold the specified number of args
 func (op Op) Bytes(args int) []byte {
 	b := make([]byte, args*8+2)
 	op.Put(&b[0])
 	return b
 }
 
+// OpFunc is a function that the VM can invoke for an op
 type OpFunc func(*VM) error
 
+// OpDef is a tool for defining ops for the VM. Func must be either an OpFunc,
+// ArgFunc or ArgFuncErr. Args takes a slice of bools where true indicates a
+// register arg and false indicates a value. The length is used for ArgFunc and
+// ArgFuncErr and the boolean values are only used for the description.
 type OpDef struct {
 	Name string
 	Desc string
 	Func interface{}
-	Args []bool // T = Register
+	Args []bool
 	Idx  Op
 }
 
+// OpFunc produces an OpFunc from an OpDef
 func (od OpDef) OpFunc() OpFunc {
 	if of, ok := od.Func.(func(*VM) error); ok {
 		return of
@@ -45,9 +54,11 @@ func (od OpDef) OpFunc() OpFunc {
 		return argFuncErr(afe, od.Args)
 	}
 
-	panic(od.Name + ": Func must be of type OpFunc,ArgFunc or ArgFuncErr")
+	panic(od.Name + ": Func must be of type OpFunc, ArgFunc or ArgFuncErr")
 }
 
+// ArgFunc is helpful in defining OpFuncs from OpDefs, the args will be passed
+// in as a slice of QWords
 type ArgFunc func([]Qword, *VM)
 
 func argFunc(fn ArgFunc, boolArgs []bool) OpFunc {
@@ -62,6 +73,9 @@ func argFunc(fn ArgFunc, boolArgs []bool) OpFunc {
 	}
 }
 
+// ArgFuncErr is helpful in defining OpFuncs from OpDefs, the args will be
+// passed in as a slice of QWords. If it returns an error, that will be returned
+// from the OpFunc.
 type ArgFuncErr func([]Qword, *VM) error
 
 func argFuncErr(fn ArgFuncErr, boolArgs []bool) OpFunc {
@@ -76,6 +90,7 @@ func argFuncErr(fn ArgFuncErr, boolArgs []bool) OpFunc {
 	}
 }
 
+// Describe uses the OpDef to produce a description of the op.
 func (od OpDef) Describe() string {
 	if len(od.Args) == 0 {
 		if od.Desc == "" {
@@ -101,8 +116,10 @@ func (od OpDef) Describe() string {
 	return fmt.Sprintf("%s %s : %s", od.Name, argsString, od.Desc)
 }
 
+// OpList allows bulk operations to be performed on a slice of OpDefs
 type OpList []OpDef
 
+// Ops returns a slice of OpFuncs. The slice will always be 65,536 long.
 func (os OpList) Ops() []OpFunc {
 	ops := make([]OpFunc, 65536)
 	var idx Op
@@ -117,6 +134,7 @@ func (os OpList) Ops() []OpFunc {
 	return ops
 }
 
+// Describe returns a description of all the ops
 func (os OpList) Describe() string {
 	ds := make([]string, len(os))
 	for i, o := range os {

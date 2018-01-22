@@ -12,6 +12,8 @@ type opIdx struct {
 	OpDef
 }
 
+// Parser returns a parsing function that will take a string and return a VM
+// program.
 func (os OpList) Parser() func(string) ([]byte, error) {
 	byName := make(map[string]opIdx, len(os))
 	var idx Op
@@ -132,12 +134,14 @@ func (l lexedLine) Error(ErrorType string) LineError {
 	}
 }
 
+// LineError represents an error in a specific line
 type LineError struct {
 	LineNumber int
 	LineString string
 	ErrorType  string
 }
 
+// Error fulfils the error interface and indicates where the error occured
 func (le LineError) Error() string {
 	return fmt.Sprintf("%s) %d: %s", le.ErrorType, le.LineNumber, le.LineString)
 }
