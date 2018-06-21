@@ -8,7 +8,8 @@ import (
 )
 
 func TestBasic(t *testing.T) {
-	p, err := ops.Parser(`
+	parser := ops.List.Parser()
+	p, err := parser(`
 		set 1 123
 		set 0 55.55
 		copy 2 1
@@ -19,7 +20,7 @@ func TestBasic(t *testing.T) {
 	`)
 	assert.NoError(t, err)
 
-	v := vm.New([]vm.Qword{0, 0, 0, 0, 0}, p, ops.Ops)
+	v := vm.New([]vm.Qword{0, 0, 0, 0, 0}, p, ops.List.Ops())
 	v.Panic = true
 
 	err = v.Run()
@@ -31,20 +32,22 @@ func TestBasic(t *testing.T) {
 }
 
 func TestRecover(t *testing.T) {
-	p, err := ops.Parser(`
+	parser := ops.List.Parser()
+	p, err := parser(`
 		set 100 123 // Register out of range
 		stop
 	`)
 	assert.NoError(t, err)
 
-	v := vm.New([]vm.Qword{0, 0, 0, 0, 0}, p, ops.Ops)
+	v := vm.New([]vm.Qword{0, 0, 0, 0, 0}, p, ops.List.Ops())
 
 	err = v.Run()
 	assert.Error(t, err)
 }
 
 func TestPages(t *testing.T) {
-	p, err := ops.Parser(`
+	parser := ops.List.Parser()
+	p, err := parser(`
 		set 0 1024
 		alloc 0
 		set 1 555
@@ -53,7 +56,7 @@ func TestPages(t *testing.T) {
 		stop
 	`)
 	assert.NoError(t, err)
-	v := vm.New([]vm.Qword{0, 0, 0, 0, 0}, p, ops.Ops)
+	v := vm.New([]vm.Qword{0, 0, 0, 0, 0}, p, ops.List.Ops())
 
 	err = v.Run()
 	assert.NoError(t, err)
@@ -65,7 +68,8 @@ func TestPages(t *testing.T) {
 
 func TestManualMult(t *testing.T) {
 	// compute 5x3
-	p, err := ops.Parser(`
+	parser := ops.List.Parser()
+	p, err := parser(`
 		set 0 5
 		set 1 3
 		set 2 1
@@ -76,7 +80,7 @@ func TestManualMult(t *testing.T) {
 		stop
 	`)
 	assert.NoError(t, err)
-	v := vm.New([]vm.Qword{0, 0, 0, 0, 0, 0}, p, ops.Ops)
+	v := vm.New([]vm.Qword{0, 0, 0, 0, 0, 0}, p, ops.List.Ops())
 	v.Panic = true
 
 	err = v.Run()
@@ -86,7 +90,8 @@ func TestManualMult(t *testing.T) {
 
 func TestVar(t *testing.T) {
 	// compute AxB
-	p, err := ops.Parser(`
+	parser := ops.List.Parser()
+	p, err := parser(`
 		#def  A 7
 		#def  B 4
 		set   0 A
@@ -98,7 +103,7 @@ func TestVar(t *testing.T) {
 		stop
 	`)
 	assert.NoError(t, err)
-	v := vm.New([]vm.Qword{0, 0, 0}, p, ops.Ops)
+	v := vm.New([]vm.Qword{0, 0, 0}, p, ops.List.Ops())
 	v.Panic = true
 
 	err = v.Run()
